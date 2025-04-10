@@ -39,7 +39,8 @@ If you wish to capture radar data on Ubuntu:
 
 ## 📦 Notes
 
-- Tested only with **AWR1843** for now.
+- Tested only with **AWR1843Boost + DCA1000EVM** for now.
+- For now only support 2TX 4RX in fft.
 - More radar models will be supported in the future.
 - You must **update the Lua script** and **adjust the config** in the scripts to match your radar settings.
 
