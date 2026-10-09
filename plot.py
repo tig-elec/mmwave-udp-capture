@@ -1,9 +1,14 @@
 #!/usr/bin/python3
 
+import os
 import threading
 import numpy as np
-import pyqtgraph as pg
+# 环境里同时装了 PyQt5 和 PySide6 时,pyqtgraph 默认会选 PySide6,而下面用的是 PyQt5,
+# 两套 Qt 混用会报 "QWidget: Must construct a QApplication before a QWidget"。强制统一到 PyQt5。
+os.environ.setdefault('PYQTGRAPH_QT_LIB', 'PyQt5')
 from PyQt5 import QtWidgets, QtCore
+import pyqtgraph as pg
+assert pg.Qt.QT_LIB == 'PyQt5', f"pyqtgraph picked {pg.Qt.QT_LIB}, expected PyQt5"
 
 import time
 
@@ -44,11 +49,3 @@ class plotThread(threading.Thread):
     def plot(self, data):
         self.init_completed.wait()  # Wait for the initialization to complete
         self.image_updater.new_image.emit(data)
-
-# if __name__ == '__main__':
-#     a = plotThread(2, "plot")
-#     a.start()
-#     for i in range (1000):
-#         image = np.random.rand(256, 256)
-#         a.plot(image)
-#         time.sleep(0.01)

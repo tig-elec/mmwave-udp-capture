@@ -11,9 +11,15 @@ import numpy as np
 import os
 from typing import List
 
+from config import FFT_BACKEND, GENERATE_CUBE, PRINT_TIMING
 from streaming import adcCapThread
 from triggers import create_trigger_thread
-from fft import get_heatmap_3dfft
+if FFT_BACKEND == 'cupy':
+    from fft_cupy import get_heatmap_3dfft    # GPU
+elif FFT_BACKEND == 'cpu':
+    from fft_cpu import get_heatmap_3dfft     # CPU
+else:
+    raise ValueError(f"config.FFT_BACKEND must be 'cupy' or 'cpu', got {FFT_BACKEND!r}")
 from plot import plotThread
 
 
@@ -49,6 +55,10 @@ def main() -> None:
         os.makedirs(os.path.join(folder, "frame"))
         os.makedirs(folder + "/RA")
         os.makedirs(folder + "/RD")
+        if GENERATE_CUBE:
+            os.makedirs(folder + "/cube")
+            print("[Warning] GENERATE_CUBE = True: saving a full cube per frame. "
+                  "This is not real-time; frames that cannot be processed in time will be dropped.")
         print(f"Data and heatmaps will be saved in folder: {folder}")
 
         # Open output files
@@ -68,6 +78,8 @@ def main() -> None:
             if frame_data is None or timestamp is None or frame_id is None or lostPacketFlag is None:
                 print("[Main] No valid frame received.")
                 continue
+
+            t_frame_start = time.perf_counter()
 
             # Check for packet loss
             if lostPacketFlag:
@@ -128,7 +140,16 @@ def main() -> None:
             np.save(os.path.join(folder, "frame", f"{frame_count}.npy"), frame_data)
 
             # real-time processing and visualization
-            rd, ra, _ = get_heatmap_3dfft(frame_data)
+            t_fft_start = time.perf_counter()
+            if GENERATE_CUBE:
+                rd, ra, _, cube = get_heatmap_3dfft(frame_data, return_cube=True)
+                t_fft_end = time.perf_counter()
+                np.save(folder + f"/cube/{frame_count}.npy", cube)
+                cube_save_str = f" | cube save {(time.perf_counter() - t_fft_end) * 1000:.1f}"
+            else:
+                rd, ra, _ = get_heatmap_3dfft(frame_data)
+                t_fft_end = time.perf_counter()
+                cube_save_str = ""
             np.save(folder + f"/RA/{frame_count}.npy", ra)
             np.save(folder + f"/RD/{frame_count}.npy", rd)
 
@@ -136,6 +157,11 @@ def main() -> None:
             h_padding = np.zeros([ra.shape[0], padding_gap])
             h_heatmap = np.hstack((ra, h_padding, rd))
             plot.plot(h_heatmap.T)
+
+            if PRINT_TIMING:
+                print(f"[Time]  {frame_count} | fft {(t_fft_end - t_fft_start) * 1000:.1f}{cube_save_str}"
+                      f" | total {(time.perf_counter() - t_frame_start) * 1000:.1f} ms"
+                      f" | queue {adc_single.frame_queue.qsize()}/{adc_single.frame_queue.maxsize}")
 
             # Check if target frame count reached
             if frame_count >= frame_number:

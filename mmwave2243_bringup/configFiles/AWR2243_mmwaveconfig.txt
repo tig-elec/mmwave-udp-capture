@@ -1,0 +1,245 @@
+#
+# AWR2243 mmwaveconfig —— 由根目录 lua/skeleton.lua 逐项翻译而来
+#   77GHz  slope 65.998MHz/µs  Fs 4800ksps  256 样点  idle 20µs / adcStart 6µs / rampEnd 60µs
+#   TX0+TX2 轮发 + 4RX,2 chirp × 255 loops @ 100ms(10Hz)
+# 规则:每处上面的注释是 lua 原行,下面是换算后的配置值。
+# 换算依据(与 lua LSB 对齐):
+#   idle/adcStart/rampEnd : µs ÷ 10ns  = ×100
+#   freqSlopeConst        : MHz/µs ÷ 0.048279  (= 2071 × slope / 99.987391)
+#   periodicity           : ms → 5ns 单位  (100ms = 20000000)
+#   channelTx 位掩码       : TX0=1, TX1=2, TX2=4
+# 改采样点数 / loop 数 / TX 数时,根目录 config.py 的 ADC_PARAMS 必须同步。
+#
+# AWR2243 mmwaveconfig, translated item by item from lua/skeleton.lua in the repository root
+#   77 GHz, slope 65.998 MHz/us, Fs 4800 ksps, 256 samples, idle 20 us / adcStart 6 us / rampEnd 60 us
+#   TX0+TX2 in turn + 4 RX, 2 chirps x 255 loops @ 100 ms (10 Hz)
+# Convention: the comment above each block quotes the lua line, the values below are its conversion.
+# Conversion (aligned with the lua LSBs):
+#   idle/adcStart/rampEnd : us / 10 ns = x100
+#   freqSlopeConst        : MHz/us / 0.048279  (= 2071 x slope / 99.987391)
+#   periodicity           : ms in units of 5 ns  (100 ms = 20000000)
+#   channelTx bit mask    : TX0=1, TX1=2, TX2=4
+# When the number of samples / loops / TX changes, ADC_PARAMS in config.py (repository root) must follow.
+#
+# 文件格式 / File format:
+#   每行 key=value; 注释行必须以 # 开头(# 前不能有空格),每行不要超过 200 字节,段的顺序不能改。
+#   One key=value; per line. Comment lines must start with # in column 0, keep every line below
+#   200 bytes, and do not reorder the sections.
+#
+#For detailed view of mmWave Radar configuration structure please refer
+#ti\control\mmwavelink\docs\doxygen\html\index.html
+
+#
+#Global configuration
+#FwDownload 1=Enable; Logging; TransferMode 1=I2C/0=SPI; FlashConnected
+# 注意:fpga_udp 的 AWR2243_init 绑定的是 MMWL_App_init(..., downloadFw=false),
+#   这里 EnableFwDownload=1 实际不会触发下载。patch 固件靠 flash_patch.py 一次性烧进板子串行 flash;
+#   启动日志出现 "RF Patch Version [0.0.0.0]" + "No patch detected" 说明这块板子还没烧。
+# Note: AWR2243_init in fpga_udp is bound to MMWL_App_init(..., downloadFw=false), so
+#   EnableFwDownload=1 here does NOT download anything. The patch firmware is written once to the
+#   board's serial flash with flash_patch.py; "RF Patch Version [0.0.0.0]" + "No patch detected"
+#   in the start-up log means the board has not been flashed yet.
+#
+EnableFwDownload=1;
+EnableMmwlLogging=0;
+TransferMode=0;
+IsFlashConnected=1;
+#END
+
+#
+#power on master arguments
+#crcType 0:16Bit/1:32Bit/2:64Bit; ackTimeout ~5mSec
+#
+crcType=1;
+ackTimeout=50000;
+#END
+
+#
+#channel config parameters
+# lua: ar1.ChanNAdcConfig(1, 0, 1, 1, 1, 1, 1, 2, 1, 0)   -- tx0 tx2, rx0-3
+#      → TX0+TX2 = 1+4 = 5 ; RX0-3 = 15
+# channelTx / channelRx 是位掩码 / are bit masks: TX0=1 TX1=2 TX2=4 ; RX0=1 RX1=2 RX2=4 RX3=8
+#
+channelTx=5;
+channelRx=15;
+cascading=0;
+#END
+
+#
+#ADC out config parameters (rlAdcOutCfg_t)
+# adcFormat: 0 Real / 1 Complex(1x) / 2 Complex with image band(2x) / 3 Pseudo real
+# complex1x(=1),与 lua 的 ChanNAdcConfig(...,2,1,0) 一致。1x 下 IF 带宽 = Fs,全部 range bin 有效
+# (2x 只有前一半有目标)。用 1x 时下面 Programmable Filter 段必须保持 0/0,否则只剩噪声。
+# complex1x (=1), same as ChanNAdcConfig(...,2,1,0) in the lua. With 1x the IF bandwidth equals Fs
+# and all range bins are valid (with 2x only the first half holds targets). With 1x the
+# Programmable Filter block below must stay 0/0, otherwise only noise is left.
+#
+adcBits=2;
+adcFormat=1;
+#END
+
+#
+#DATA format config parameters (rlDevDataFmtCfg_t)
+# 参考:mmWave Studio 日志里是 DataFmtConfig,15,2,1,0,1
+# For reference, the mmWave Studio log shows DataFmtConfig,15,2,1,0,1
+#   (rxChanEn=15, adcBits=2, adcFmt=1, iqSwapSel=0, chInterleave=1)
+# iqSwapSel=0 和 chInterleave=0 与 fft 的 'launcher' 解包配套,不要改。
+# iqSwapSel=0 and chInterleave=0 match the 'launcher' unpacking of the fft code; do not change them.
+#
+rxChanEn=15;
+adcBitsD=2;
+adcFmt=1;                    # complex1x
+iqSwapSel=0;                 # I first
+chInterleave=0;
+#END
+
+#
+#Low power config
+#
+anaCfg=0;
+lpAdcMode=0;
+#END
+
+#
+#Data Path config (rlDevDataPathCfg_t)
+# lua 里的 ar1.DataPathConfig(513, 1216644097, 0) 是寄存器打包值,这里没有照搬,
+# 用的是 pyRadar 的默认值(4-lane LVDS 下可正常出数据)。
+# ar1.DataPathConfig(513, 1216644097, 0) in the lua is a packed register value and is not copied;
+# these are the pyRadar defaults, which produce valid data over 4-lane LVDS.
+#
+intfSel=1;
+transferFmtPkt0=1;
+transferFmtPkt1=0;
+cqConfig=2;
+cq0TransSize=64;
+cq1TransSize=64;
+cq2TransSize=64;
+#END
+
+#
+#LVDS clock config (rlDevDataPathClkCfg_t)
+# lua: ar1.LvdsClkConfig(1, 1)   → laneClk=1, dataRate=1
+#
+laneClk=1;
+dataRate=1;
+#END
+
+#
+#SET HSI clock (rlDevHsiClk_t)
+#
+hsiClk=9
+#END
+
+#
+#LANE config (rlDevLaneEnable_t)
+# lua: ar1.LVDSLaneConfig(0, 1, 1, 0, 0, 1, 0, 0) 是 2-lane(1843 只有 2 条 lane)。
+# 这里用 4-lane(laneEn=15):启动器的数据通路和 fft 的 'launcher' 解包是按 4-lane 验证的。
+# lane 数只影响传输,不影响雷达发的波形和 ADC 数据。必须和 cf.json 的 lvdsMode=1 一致。
+# The lua line ar1.LVDSLaneConfig(0, 1, 1, 0, 0, 1, 0, 0) is 2-lane (the 1843 has only 2 lanes).
+# 4-lane (laneEn=15) is used here: the launcher data path and the 'launcher' unpacking of the fft
+# code were validated with 4 lanes. The lane count only affects the transport, not the waveform
+# or the ADC data. It must agree with lvdsMode=1 in cf.json.
+#
+laneEn=15;
+#END
+
+#
+#LVDS Lane Config (rlDevLvdsLaneCfg_t)
+# Studio GUI lane format = Format0 → laneFmtMap=0
+#
+laneFmtMap=0;
+laneParamCfg=1;
+#END
+
+#
+#Programmable Filter config (rlRfProgFiltConf_t)
+# 保持 0/0(不滤波),与 mmWave Studio 一致。
+# pyRadar 默认的 progFiltLen=14 + progFiltFreqShift=100 会先把 IF 频谱搬移 1.00×Fs 再过 14 抽头低通,
+# 而该频移只在 complex 1x 下生效,结果是信号被搬到阻带外、只剩噪底(complex 2x 不受影响)。
+# Keep 0/0 (no filtering), as mmWave Studio does.
+# The pyRadar defaults progFiltLen=14 + progFiltFreqShift=100 shift the IF spectrum by 1.00 x Fs and
+# then apply a 14-tap low-pass. The shift only acts in complex 1x, where it moves the signal into
+# the stop band and leaves only the noise floor (complex 2x is not affected).
+#
+profileId=0;
+coeffStartIdx=0;
+progFiltLen=0;
+progFiltFreqShift=0;
+#END
+
+#
+#Profile config (rlProfileCfg_t)
+# lua: ar1.ProfileConfig(0, 77, 20, 6, 60, 0, 0, 0, 0, 0, 0, 65.998, 0, 256, 4800, 0, 0, 30)
+#      profileId=0  startFreq=77GHz  idle=20µs  adcStart=6µs  rampEnd=60µs
+#      三个 TX 的 power backoff=0、phase shifter=0  slope=65.998MHz/µs  txStartTime=0
+#      numAdcSamples=256  sampleRate=4800ksps  hpf1=0 hpf2=0  rxGain=30
+#      (power backoff and phase shifter of the three TX are 0)
+# 校验 / checks:
+#   ADC 采样时间 / sampling time 256/4.8 = 53.33 µs, + adcStart 6 = 59.33 ≤ rampEnd 60
+#   扫频 / sweep 65.998 × 60 = 3.96 GHz, 终止 / ends at 80.96 GHz ≤ 81 GHz
+#
+profileId=0;
+pfVcoSelect=2;
+startFreqConst=1435384035;   # 77 GHz
+idleTimeConst=2000;          # 20 us  (x100)
+adcStartTimeConst=600;       # 6 us   (x100)
+rampEndTime=6000;            # 60 us  (x100)
+txOutPowerBackoffCode=0;
+txPhaseShifter=0;
+freqSlopeConst=1367;         # 65.998 MHz/us  (2071 x 65.998 / 99.987)
+txStartTime=0;
+numAdcSamples=256;           # sync with 'samples' in config.py
+digOutSampleRate=4800;       # ksps
+hpfCornerFreq1=0;
+hpfCornerFreq2=0;
+rxGain=30;                   # dB
+#END
+
+#
+#Chirp 0 (rlChirpCfg_t)
+# lua: ar1.ChirpConfig(0, 0, 0, 0, 0, 0, 0, 1, 0, 0)   -- chirp0 → TX0
+#
+chirpStartIdx=0;
+chirpEndIdx=0;
+profileIdCPCFG=0;
+startFreqVar=0;
+freqSlopeVar=0;
+idleTimeVar=0;
+adcStartTimeVar=0;
+txEnable=1;                  # TX0
+#END
+
+#
+#Chirp 1 (rlChirpCfg_t)
+# lua: ar1.ChirpConfig(1, 1, 0, 0, 0, 0, 0, 0, 0, 1)   -- chirp1 → TX2
+#
+chirpStartIdx=1;
+chirpEndIdx=1;
+profileIdCPCFG=0;
+startFreqVar=0;
+freqSlopeVar=0;
+idleTimeVar=0;
+adcStartTimeVar=0;
+txEnable=4;                  # TX2
+#END
+
+#
+#Frame configuration (rlFrameCfg_t)
+# lua: ar1.FrameConfig(0, 1, 0, 255, 100, 0, 0, 1)
+#      chirpStartIdx=0 chirpEndIdx=1  numFrames=0  loops=255  period=100ms  triggerDelay=0
+#      dummyChirps=0  triggerSelect=1(SW)
+# 校验 / checks:
+#   2 chirp × 255 loops × 80 µs = 40.8 ms ≤ 帧周期 / frame period 100 ms
+#   数据量 / frame size 255 × 2 × 256 × 4 RX × 4 B = 2.09 MB
+# frame 段的 numAdcSamples 是独立字段,必须等于 profile 段 numAdcSamples 的 2 倍(复数 I/Q)。
+# numAdcSamples in this block is a separate field and must be twice the profile numAdcSamples (complex I/Q).
+#
+chirpStartIdxFCF=0;
+chirpEndIdxFCF=1;           # 2 chirps (idx 0, 1)
+frameCount=0;               # 0 = continuous
+loopCount=255;              # sync with 'chirps' in config.py
+periodicity=20000000;       # 100 ms in units of 5 ns
+triggerDelay=0;
+numAdcSamples=512;          # 2 x profile numAdcSamples
+triggerSelect=1;            # 1 = software trigger
+#END

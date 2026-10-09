@@ -13,12 +13,18 @@ Both expose the same interface used by the capture main loop:
 
 import time
 import threading
-import serial
 import queue
 from datetime import datetime
 from typing import Optional, Any
 
 from config import USE_HARDWARE_TRIGGER, TRIGGER_SOURCE, COM_PORT, ROS_TOPIC
+
+# 有条件导入串口模块(pyserial):不用串口硬触发时,没装也能运行
+try:
+    import serial
+    SERIAL_AVAILABLE = True
+except ImportError:
+    SERIAL_AVAILABLE = False
 
 # 有条件导入ROS相关模块
 try:
@@ -254,5 +260,8 @@ def create_trigger_thread() -> Optional[threading.Thread]:
         print(f"[Main] Hardware trigger enabled. Using ROS source. Topic: {ROS_TOPIC}")
         return RosTriggerListener(ROS_TOPIC)
 
+    if not SERIAL_AVAILABLE:
+        raise ImportError("pyserial not available. Cannot use 'serial' trigger source. "
+                          "Install it (pip install pyserial) or set USE_HARDWARE_TRIGGER = False in config.py.")
     print(f"[Main] Hardware trigger enabled. Using serial source. Port: {COM_PORT}")
     return SerialMonitorThread(COM_PORT)

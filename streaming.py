@@ -63,7 +63,6 @@ class adcCapThread(threading.Thread):
         # Single Radar configuration
         if self.threadID == 1:
             static_ip = '192.168.33.30'  # IP that streaming.py listens on
-            # static_ip = '127.0.0.1'
             adc_ip = '192.168.33.180'    # IP of the ADC/radar
 
         # Create configuration and data destinations
